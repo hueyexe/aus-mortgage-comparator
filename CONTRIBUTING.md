@@ -1,100 +1,73 @@
 # Contributing
 
-Thanks for your interest in contributing! This project is open source under the MIT license and we welcome contributions of all kinds.
+MIT licensed, contributions welcome.
 
-## Getting Started
+## Setup
 
-### Prerequisites
-
-- [Bun](https://bun.sh/) (frontend package manager)
-- [Go 1.26+](https://go.dev/dl/) (data aggregator)
-- [golangci-lint v2](https://golangci-lint.run/welcome/install/) (Go linting)
-
-### Setup
+You need [Bun](https://bun.sh/), [Go 1.26+](https://go.dev/dl/), and [golangci-lint v2](https://golangci-lint.run/welcome/install/).
 
 ```sh
-# Clone the repo
 git clone https://github.com/hueyexe/aus-mortgage-comparator.git
 cd aus-mortgage-comparator
 
-# Frontend
 bun install
-bun run dev          # starts dev server at localhost:5173
+bun run dev          # frontend dev server
 
-# Go aggregator
 cd aggregator
-go build ./...       # verify it compiles
+go build ./...       # check it compiles
 ```
 
-The frontend loads `public/rates.json` at runtime. A sample file with test data is already committed, so the dev server works out of the box.
+A `rates.db` is already committed so the frontend works without running the aggregator.
 
-## Making Changes
+## Making changes
 
-### Frontend (React + TypeScript + Tailwind)
+### Frontend
 
 ```sh
 bun run dev          # dev server with hot reload
-bun run build        # typecheck + production build
+bun run build        # typecheck + build
 bun run lint         # eslint
 ```
 
-Key conventions:
-- Use **bun**, not npm/yarn/pnpm
-- Double quotes, semicolons, 2-space indent
-- `import type` for type-only imports (enforced by `verbatimModuleSyntax`)
-- Default exports for components, props interfaces inline in the same file
-- Tailwind utility classes only — no custom CSS
+Conventions: bun (not npm), double quotes, semicolons, 2-space indent, `import type` for type-only imports, default exports for components, Tailwind utility classes only.
 
-### Go Aggregator
+### Go aggregator
 
 ```sh
 cd aggregator
-go build ./...              # compile check
-golangci-lint run ./...     # lint (must pass before PR)
-go test ./...               # run tests
-go test -run TestFoo        # run a single test
+go build ./...
+golangci-lint run ./...     # must pass
+go test ./...
 ```
 
-Key conventions:
-- `gofmt` formatting (tabs)
-- Wrap errors with `fmt.Errorf("context: %w", err)`
-- Skip individual bank failures gracefully — never abort the whole run
-- Minimise external dependencies (currently only `golang.org/x/sync`)
+Conventions: gofmt, wrap errors with `fmt.Errorf("context: %w", err)`, skip individual bank failures gracefully, minimise external deps.
 
-See [AGENTS.md](AGENTS.md) for the full code style guide.
+Full style guide in [AGENTS.md](AGENTS.md).
 
-## Pull Requests
+## Pull requests
 
-1. Fork the repo and create a branch from `main`
+PRs go to `main`. Squash merge only. Branches auto-delete after merge.
+
+1. Fork and branch from `main`
 2. Make your changes
-3. Ensure both builds pass:
+3. Check both builds pass:
    ```sh
    bun run build
    cd aggregator && go build ./... && golangci-lint run ./...
    ```
-4. Open a pull request with a clear description of what you changed and why
+4. Open a PR describing what changed and why
 
-### What We're Looking For
+## What's useful to work on
 
-- Bug fixes and reliability improvements
-- Better handling of edge cases in CDR API responses
-- UI/UX improvements (accessibility, mobile experience, new filter options)
-- Performance optimisations
-- Documentation improvements
-- Additional bank coverage or data enrichment
+- Bug fixes
+- CDR API edge case handling (lots of banks return weird data)
+- UI/UX improvements, especially mobile
+- Accessibility
+- Performance
+- Docs
 
-### Good First Issues
+Issues labelled `good first issue` are a good starting point.
 
-Look for issues labelled `good first issue` — these are scoped tasks suitable for newcomers to the codebase.
+## Reporting bugs
 
-## Reporting Issues
-
-If you find a bug or have a feature request, please [open an issue](https://github.com/hueyexe/aus-mortgage-comparator/issues). Include:
-- What you expected to happen
-- What actually happened
-- Steps to reproduce (if applicable)
-- Browser/OS details for frontend issues
-
-## Code of Conduct
-
-Be respectful and constructive. We're all here to build something useful for Australian mortgage borrowers.
+[Open an issue](https://github.com/hueyexe/aus-mortgage-comparator/issues) with what you expected, what happened, and steps to reproduce.
