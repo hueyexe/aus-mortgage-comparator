@@ -1,73 +1,125 @@
-# React + TypeScript + Vite
+# Australian Mortgage Rate Comparator
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A free, open source tool that compares residential mortgage rates from Australian banks. Data is sourced directly from the [Consumer Data Right (CDR)](https://www.cdr.gov.au/) open banking APIs — the same regulated data banks are required to publish.
 
-Currently, two official plugins are available:
+**[View the live site](https://hueyexe.github.io/aus-mortgage-comparator/)**
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## What This Does
 
-## React Compiler
+Australian banks publish their mortgage rates through government-mandated open banking APIs. This project collects those rates automatically every 6 hours and presents them in a simple, searchable table.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+You can filter by:
+- **Rate type** — Variable or Fixed
+- **Loan purpose** — Owner Occupier or Investment
+- **Repayment type** — Principal & Interest or Interest Only
+- **Maximum LVR** — 60%, 70%, 80%, 90%, or 95%
+- **Bank or product name** — free text search
 
-## Expanding the ESLint configuration
+Rates are sortable by interest rate or comparison rate to help you find the best deal.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## Important Disclaimer
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+This tool is for **informational purposes only**. It is not financial advice. Rates shown are the advertised rates published by banks through the CDR APIs and may not reflect the rate you would actually receive. Always confirm rates directly with the lender and consider seeking independent financial advice before making any decisions.
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+---
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## How It Works
+
+```
+CDR Register API          Bank CDR APIs              GitHub Pages
+(discover banks)    -->   (fetch mortgage rates)  --> (static website)
+       |                         |                         |
+   Go aggregator            Go aggregator            React frontend
+   (every 6 hours via GitHub Actions)                (reads rates.json)
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+1. A **Go program** queries the CDR Register to discover all participating banks
+2. It then fetches residential mortgage products and rates from each bank's public API
+3. The rates are normalised into a single `rates.json` file
+4. A **GitHub Actions** workflow runs this every 6 hours and commits the updated data
+5. A **React frontend** loads the JSON and provides filtering, sorting, and search
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+No backend server is needed — the entire site is static and hosted free on GitHub Pages.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Data Source
+
+All rate data comes from the [Consumer Data Standards](https://consumerdatastandardsaustralia.github.io/standards/) APIs. These are public, unauthenticated endpoints that Australian banks are legally required to maintain under the CDR regime. No scraping, no manual data entry — just official open banking data.
+
+---
+
+## For Developers
+
+### Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React, TypeScript, Vite, Tailwind CSS v4 |
+| Data aggregator | Go 1.26 |
+| Package manager | Bun |
+| Linting | ESLint (frontend), golangci-lint v2 (Go) |
+| Hosting | GitHub Pages |
+| CI/CD | GitHub Actions |
+
+### Quick Start
+
+```sh
+# Clone
+git clone https://github.com/hueyexe/aus-mortgage-comparator.git
+cd aus-mortgage-comparator
+
+# Frontend
+bun install
+bun run dev              # dev server at localhost:5173
+
+# Go aggregator
+cd aggregator
+go build ./...           # compile
+go run .                 # fetch live rates → ../public/rates.json
+golangci-lint run ./...  # lint
 ```
+
+A sample `public/rates.json` is committed so the frontend works immediately without running the aggregator.
+
+### Project Structure
+
+```
+aggregator/              Go data aggregator (CDR API client)
+  main.go                CLI entry point, concurrency
+  register.go            Bank discovery via CDR Register
+  products.go            Product/rate fetching and normalisation
+  types.go               All type definitions
+  .golangci.yml          Linter config
+src/                     React frontend
+  App.tsx                Root component, data loading, filter logic
+  types.ts               Shared TypeScript interfaces
+  components/
+    Header.tsx           App header with metadata
+    Filters.tsx          Filter pill controls
+    RateTable.tsx        Sortable data table
+.github/workflows/
+  update-rates.yml       Cron: fetch rates every 6 hours
+  deploy.yml             Build + deploy to GitHub Pages
+```
+
+### Build & Lint
+
+```sh
+# Frontend
+bun run build            # typecheck (tsc) + vite build
+bun run lint             # eslint
+
+# Go
+cd aggregator
+go build ./...
+golangci-lint run ./...
+```
+
+### Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, code conventions, and how to submit a pull request.
+
+For detailed code style guidelines (useful for AI coding agents and new contributors), see [AGENTS.md](AGENTS.md).
+
+## License
+
+[MIT](LICENSE)

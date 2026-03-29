@@ -1,105 +1,198 @@
-import { useState } from "react";
-import type { MortgageRate } from "../types";
+import { useRef, useCallback } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import type { RateRow, FilterState } from "../types";
 
 interface RateTableProps {
-  rates: MortgageRate[];
-  total: number;
+  rates: RateRow[];
+  filters: FilterState;
+  onSort: (key: "rate" | "comparison_rate") => void;
 }
 
-type SortKey = "rate" | "comparisonRate";
-
-function formatRate(r: number) {
-  return `${(r * 100).toFixed(2)}%`;
+function formatRate(v: number): string {
+  return `${(v * 100).toFixed(2)}%`;
 }
 
-function formatLvr(min: number, max: number) {
-  if (min === 0 && max === 0) return "—";
-  if (min === 0) return `≤${(max * 100).toFixed(0)}%`;
-  return `${(min * 100).toFixed(0)}–${(max * 100).toFixed(0)}%`;
+function rateColor(v: number): string {
+  const pct = v * 100;
+  if (pct < 5.5) return "text-emerald-600 dark:text-emerald-400";
+  if (pct > 7) return "text-red-600 dark:text-red-400";
+  return "text-amber-600 dark:text-amber-400";
 }
 
-function rateTypeLabel(r: MortgageRate) {
-  const labels: Record<string, string> = {
-    VARIABLE: "Variable",
-    FIXED: "Fixed",
-    INTRODUCTORY: "Intro",
-    DISCOUNT: "Discount",
-    BUNDLE_DISCOUNT_FIXED: "Bundle Fixed",
-    BUNDLE_DISCOUNT_VARIABLE: "Bundle Var",
-  };
-  const base = labels[r.rateType] ?? r.rateType;
-  return r.fixedTerm ? `${base} ${r.fixedTerm}` : base;
+function formatLvr(min: number, max: number): string {
+  if (min === 0 && max === 0) return "--";
+  if (min === 0) return `\u2264${max}%`;
+  return `${min}-${max}%`;
 }
 
-const REPAYMENT_LABELS: Record<string, string> = {
-  PRINCIPAL_AND_INTEREST: "P&I",
-  INTEREST_ONLY: "IO",
-  OTHER: "Other",
-  UNCONSTRAINED: "Any",
-};
+function formatFixedTerm(iso: string): string {
+  if (!iso) return "--";
+  const m = iso.match(/^P(\d+)([YM])$/);
+  if (!m) return iso;
+  const n = parseInt(m[1], 10);
+  if (m[2] === "Y") return `${n}yr`;
+  if (n >= 12 && n % 12 === 0) return `${n / 12}yr`;
+  return `${n}mo`;
+}
 
-const PURPOSE_LABELS: Record<string, string> = {
-  OWNER_OCCUPIED: "Owner Occ.",
-  INVESTMENT: "Investment",
-  OTHER: "Other",
-  UNCONSTRAINED: "Any",
-};
+function SortArrow({ active, asc }: { active: boolean; asc: boolean }) {
+  if (!active) return <span className="text-gray-300 dark:text-gray-600 ml-1">&#9650;</span>;
+  return <span className="text-indigo-500 ml-1">{asc ? "\u25B2" : "\u25BC"}</span>;
+}
 
-export default function RateTable({ rates, total }: RateTableProps) {
-  const [sortKey, setSortKey] = useState<SortKey>("rate");
-  const [sortAsc, setSortAsc] = useState(true);
+function TypeBadge({ type }: { type: string }) {
+  const isFixed = type.includes("FIXED");
+  return (
+    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+      isFixed
+        ? "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300"
+        : "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
+    }`}>
+      {isFixed ? "Fixed" : "Variable"}
+    </span>
+  );
+}
 
-  const sorted = [...rates].sort((a, b) => (sortAsc ? a[sortKey] - b[sortKey] : b[sortKey] - a[sortKey]));
+export default function RateTable({ rates, filters, onSort }: RateTableProps) {
+  const parentRef = useRef<HTMLDivElement>(null);
 
-  const toggleSort = (key: SortKey) => {
-    if (sortKey === key) setSortAsc(!sortAsc);
-    else { setSortKey(key); setSortAsc(true); }
-  };
+  const virtualizer = useVirtualizer({
+    count: rates.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 48,
+    overscan: 20,
+  });
 
-  const arrow = (key: SortKey) => sortKey === key ? (sortAsc ? " ↑" : " ↓") : "";
+  const handleSort = useCallback((key: "rate" | "comparison_rate") => {
+    onSort(key);
+  }, [onSort]);
+
+  if (rates.length === 0) {
+    return (
+      <div className="text-center py-16 text-gray-500 dark:text-gray-400">
+        No rates match your filters. Try broadening your search.
+      </div>
+    );
+  }
 
   return (
-    <div className="flex-1 flex flex-col">
-      <p className="px-4 md:px-6 py-3 text-sm text-gray-500 bg-gray-50 border-b border-gray-200">
-        Showing {rates.length} of {total} rates
-      </p>
-      <div className="overflow-x-auto flex-1">
-        <table className="w-full text-sm text-left">
-          <thead className="bg-gray-50 text-gray-600 uppercase text-xs sticky top-0">
-            <tr>
-              <th className="px-4 py-3">Bank</th>
-              <th className="px-4 py-3">Product</th>
-              <th className="px-4 py-3 cursor-pointer select-none whitespace-nowrap" onClick={() => toggleSort("rate")} aria-sort={sortKey === "rate" ? (sortAsc ? "ascending" : "descending") : "none"}>
-                Rate{arrow("rate")}
-              </th>
-              <th className="px-4 py-3 cursor-pointer select-none whitespace-nowrap" onClick={() => toggleSort("comparisonRate")} aria-sort={sortKey === "comparisonRate" ? (sortAsc ? "ascending" : "descending") : "none"}>
-                Comparison{arrow("comparisonRate")}
-              </th>
-              <th className="px-4 py-3">Type</th>
-              <th className="px-4 py-3">Repayment</th>
-              <th className="px-4 py-3">Purpose</th>
-              <th className="px-4 py-3">LVR</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((r, i) => (
-              <tr key={r.productId} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                <td className="px-4 py-3 font-medium whitespace-nowrap">{r.brandGroup}</td>
-                <td className="px-4 py-3">{r.productName}{r.isTailored && <span className="ml-1 text-xs text-amber-600">Tailored</span>}</td>
-                <td className="px-4 py-3 font-semibold text-indigo-700">{formatRate(r.rate)}</td>
-                <td className="px-4 py-3 text-gray-600">{formatRate(r.comparisonRate)}</td>
-                <td className="px-4 py-3 whitespace-nowrap">{rateTypeLabel(r)}</td>
-                <td className="px-4 py-3">{REPAYMENT_LABELS[r.repaymentType]}</td>
-                <td className="px-4 py-3">{PURPOSE_LABELS[r.loanPurpose]}</td>
-                <td className="px-4 py-3 whitespace-nowrap">{formatLvr(r.lvrMin, r.lvrMax)}</td>
+    <>
+      {/* Desktop table */}
+      <div className="hidden md:block">
+        <div
+          ref={parentRef}
+          className="overflow-auto rounded-2xl border border-gray-200 dark:border-gray-800"
+          style={{ maxHeight: "70vh" }}
+        >
+          <table className="w-full text-sm" role="grid">
+            <thead className="sticky top-0 z-[1] bg-gray-50 dark:bg-gray-900 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              <tr>
+                <th className="px-4 py-3 w-44">Bank</th>
+                <th className="px-4 py-3">Product</th>
+                <th
+                  className="px-4 py-3 w-28 cursor-pointer select-none hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                  onClick={() => handleSort("rate")}
+                  aria-sort={filters.sortKey === "rate" ? (filters.sortAsc ? "ascending" : "descending") : "none"}
+                >
+                  Rate <SortArrow active={filters.sortKey === "rate"} asc={filters.sortAsc} />
+                </th>
+                <th
+                  className="px-4 py-3 w-28 cursor-pointer select-none hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                  onClick={() => handleSort("comparison_rate")}
+                  aria-sort={filters.sortKey === "comparison_rate" ? (filters.sortAsc ? "ascending" : "descending") : "none"}
+                >
+                  Comparison <SortArrow active={filters.sortKey === "comparison_rate"} asc={filters.sortAsc} />
+                </th>
+                <th className="px-4 py-3 w-24">Type</th>
+                <th className="px-4 py-3 w-24">Repayment</th>
+                <th className="px-4 py-3 w-28">Purpose</th>
+                <th className="px-4 py-3 w-20">LVR</th>
               </tr>
-            ))}
-            {sorted.length === 0 && (
-              <tr><td colSpan={8} className="px-4 py-12 text-center text-gray-400">No rates match your filters.</td></tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody
+              style={{ height: `${virtualizer.getTotalSize()}px`, position: "relative" }}
+            >
+              {virtualizer.getVirtualItems().map((vRow) => {
+                const row = rates[vRow.index];
+                return (
+                  <tr
+                    key={vRow.index}
+                    className={`absolute w-full flex items-center ${
+                      vRow.index % 2 === 0
+                        ? "bg-white dark:bg-gray-950"
+                        : "bg-gray-50/50 dark:bg-gray-900/50"
+                    } hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30 transition-colors`}
+                    style={{
+                      height: `${vRow.size}px`,
+                      transform: `translateY(${vRow.start}px)`,
+                    }}
+                  >
+                    <td className="px-4 truncate w-44 font-medium">{row.bank_name}</td>
+                    <td className="px-4 truncate flex-1 text-gray-600 dark:text-gray-400">{row.product_name}</td>
+                    <td className={`px-4 w-28 font-bold font-mono ${rateColor(row.rate)}`}>{formatRate(row.rate)}</td>
+                    <td className="px-4 w-28 font-mono text-gray-600 dark:text-gray-400">{formatRate(row.comparison_rate)}</td>
+                    <td className="px-4 w-24"><TypeBadge type={row.rate_type} /></td>
+                    <td className="px-4 w-24 text-xs text-gray-500 dark:text-gray-400">
+                      {row.repayment_type === "PRINCIPAL_AND_INTEREST" ? "P&I" : row.repayment_type === "INTEREST_ONLY" ? "IO" : row.repayment_type}
+                    </td>
+                    <td className="px-4 w-28 text-xs text-gray-500 dark:text-gray-400">
+                      {row.loan_purpose === "OWNER_OCCUPIED" ? "Owner Occ." : row.loan_purpose === "INVESTMENT" ? "Investment" : row.loan_purpose}
+                    </td>
+                    <td className="px-4 w-20 text-xs text-gray-500 dark:text-gray-400">{formatLvr(row.lvr_min, row.lvr_max)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
+
+      {/* Mobile cards */}
+      <div className="md:hidden space-y-3">
+        {rates.slice(0, 50).map((row, i) => (
+          <div
+            key={i}
+            className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-4 hover:shadow-md transition-all duration-200"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="font-semibold text-sm truncate">{row.bank_name}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">{row.product_name}</div>
+              </div>
+              <div className={`text-lg font-bold font-mono shrink-0 ${rateColor(row.rate)}`}>
+                {formatRate(row.rate)}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1.5 mt-3">
+              <TypeBadge type={row.rate_type} />
+              <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                {row.repayment_type === "PRINCIPAL_AND_INTEREST" ? "P&I" : row.repayment_type === "INTEREST_ONLY" ? "IO" : row.repayment_type}
+              </span>
+              <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                {row.loan_purpose === "OWNER_OCCUPIED" ? "Owner Occ." : row.loan_purpose === "INVESTMENT" ? "Investment" : row.loan_purpose}
+              </span>
+              {row.fixed_term && (
+                <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                  {formatFixedTerm(row.fixed_term)}
+                </span>
+              )}
+              {(row.lvr_min > 0 || row.lvr_max > 0) && (
+                <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                  LVR {formatLvr(row.lvr_min, row.lvr_max)}
+                </span>
+              )}
+            </div>
+            <div className="mt-2 text-xs text-gray-400 dark:text-gray-500">
+              Comparison: {formatRate(row.comparison_rate)}
+            </div>
+          </div>
+        ))}
+        {rates.length > 50 && (
+          <div className="text-center text-sm text-gray-400 dark:text-gray-500 py-4">
+            Showing 50 of {rates.length} rates. Use filters to narrow results.
+          </div>
+        )}
+      </div>
+    </>
   );
 }

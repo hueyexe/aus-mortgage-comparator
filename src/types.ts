@@ -1,33 +1,68 @@
-export interface MortgageRate {
-  bankName: string;
-  brandGroup: string;
-  productName: string;
-  productId: string;
-  rateType: "VARIABLE" | "FIXED" | "INTRODUCTORY" | "DISCOUNT" | "BUNDLE_DISCOUNT_FIXED" | "BUNDLE_DISCOUNT_VARIABLE";
-  rate: number;
-  comparisonRate: number;
-  repaymentType: "PRINCIPAL_AND_INTEREST" | "INTEREST_ONLY" | "OTHER" | "UNCONSTRAINED";
-  loanPurpose: "OWNER_OCCUPIED" | "INVESTMENT" | "OTHER" | "UNCONSTRAINED";
-  lvrMin: number;
-  lvrMax: number;
-  fixedTerm: string;
-  isTailored: boolean;
-  lastUpdated: string;
-}
-
-export interface RatesFile {
-  metadata: {
-    generatedAt: string;
-    bankCount: number;
-    rateCount: number;
-  };
-  rates: MortgageRate[];
-}
-
 export interface FilterState {
   rateType: string;
   loanPurpose: string;
   repaymentType: string;
   maxLvr: number;
   search: string;
+  sortKey: "rate" | "comparison_rate";
+  sortAsc: boolean;
 }
+
+export interface RateRow {
+  bank_name: string;
+  brand_group: string;
+  product_name: string;
+  product_id: string;
+  rate_type: string;
+  rate: number;
+  comparison_rate: number;
+  repayment_type: string;
+  loan_purpose: string;
+  lvr_min: number;
+  lvr_max: number;
+  fixed_term: string;
+  is_tailored: number;
+  last_updated: string;
+}
+
+export interface DashboardStats {
+  lowestVariable: number;
+  lowestFixed: number;
+  avgRate: number;
+  bankCount: number;
+  rateCount: number;
+}
+
+export interface RateDistributionBucket {
+  bucket: string;
+  variable: number;
+  fixed: number;
+}
+
+export interface BestRateByBank {
+  bank_name: string;
+  rate: number;
+  product_name: string;
+}
+
+export interface RateHistoryPoint {
+  date: string;
+  rate: number;
+}
+
+export interface MetaFile {
+  generatedAt: string;
+  bankCount: number;
+  rateCount: number;
+  dbSizeBytes: number;
+}
+
+export const DEFAULT_FILTERS: FilterState = {
+  rateType: "",
+  loanPurpose: "",
+  repaymentType: "",
+  maxLvr: 0,
+  search: "",
+  sortKey: "rate",
+  sortAsc: true,
+};

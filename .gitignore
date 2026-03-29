@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Go
+aggregator/aggregator
+
+# Dogfood/QA output
+dogfood-output/
