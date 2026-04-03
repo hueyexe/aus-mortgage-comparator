@@ -5,7 +5,7 @@ import type { RateRow, FilterState } from "../types";
 interface RateTableProps {
   rates: RateRow[];
   filters: FilterState;
-  onSort: (key: "rate" | "comparison_rate") => void;
+  onSort: (key: FilterState["sortKey"]) => void;
 }
 
 function formatRate(v: number): string {
@@ -63,7 +63,7 @@ export default function RateTable({ rates, filters, onSort }: RateTableProps) {
     overscan: 20,
   });
 
-  const handleSort = useCallback((key: "rate" | "comparison_rate") => {
+  const handleSort = useCallback((key: FilterState["sortKey"]) => {
     onSort(key);
   }, [onSort]);
 
@@ -87,8 +87,20 @@ export default function RateTable({ rates, filters, onSort }: RateTableProps) {
           <table className="w-full text-sm" role="grid">
             <thead className="sticky top-0 z-[1] bg-gray-50 dark:bg-gray-900 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
               <tr>
-                <th className="px-4 py-3 w-44">Bank</th>
-                <th className="px-4 py-3">Product</th>
+                <th
+                  className="px-4 py-3 w-44 cursor-pointer select-none hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                  onClick={() => handleSort("bank_name")}
+                  aria-sort={filters.sortKey === "bank_name" ? (filters.sortAsc ? "ascending" : "descending") : "none"}
+                >
+                  Bank <SortArrow active={filters.sortKey === "bank_name"} asc={filters.sortAsc} />
+                </th>
+                <th
+                  className="px-4 py-3 cursor-pointer select-none hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                  onClick={() => handleSort("product_name")}
+                  aria-sort={filters.sortKey === "product_name" ? (filters.sortAsc ? "ascending" : "descending") : "none"}
+                >
+                  Product <SortArrow active={filters.sortKey === "product_name"} asc={filters.sortAsc} />
+                </th>
                 <th
                   className="px-4 py-3 w-28 cursor-pointer select-none hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
                   onClick={() => handleSort("rate")}
@@ -103,10 +115,34 @@ export default function RateTable({ rates, filters, onSort }: RateTableProps) {
                 >
                   Comparison <SortArrow active={filters.sortKey === "comparison_rate"} asc={filters.sortAsc} />
                 </th>
-                <th className="px-4 py-3 w-24">Type</th>
-                <th className="px-4 py-3 w-24">Repayment</th>
-                <th className="px-4 py-3 w-28">Purpose</th>
-                <th className="px-4 py-3 w-20">LVR</th>
+                <th
+                  className="px-4 py-3 w-24 cursor-pointer select-none hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                  onClick={() => handleSort("rate_type")}
+                  aria-sort={filters.sortKey === "rate_type" ? (filters.sortAsc ? "ascending" : "descending") : "none"}
+                >
+                  Type <SortArrow active={filters.sortKey === "rate_type"} asc={filters.sortAsc} />
+                </th>
+                <th
+                  className="px-4 py-3 w-24 cursor-pointer select-none hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                  onClick={() => handleSort("repayment_type")}
+                  aria-sort={filters.sortKey === "repayment_type" ? (filters.sortAsc ? "ascending" : "descending") : "none"}
+                >
+                  Repayment <SortArrow active={filters.sortKey === "repayment_type"} asc={filters.sortAsc} />
+                </th>
+                <th
+                  className="px-4 py-3 w-28 cursor-pointer select-none hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                  onClick={() => handleSort("loan_purpose")}
+                  aria-sort={filters.sortKey === "loan_purpose" ? (filters.sortAsc ? "ascending" : "descending") : "none"}
+                >
+                  Purpose <SortArrow active={filters.sortKey === "loan_purpose"} asc={filters.sortAsc} />
+                </th>
+                <th
+                  className="px-4 py-3 w-20 cursor-pointer select-none hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                  onClick={() => handleSort("lvr_max")}
+                  aria-sort={filters.sortKey === "lvr_max" ? (filters.sortAsc ? "ascending" : "descending") : "none"}
+                >
+                  LVR <SortArrow active={filters.sortKey === "lvr_max"} asc={filters.sortAsc} />
+                </th>
               </tr>
             </thead>
             <tbody

@@ -7,6 +7,7 @@ type MortgageRate struct {
 	BrandGroup     string  `json:"brandGroup"`
 	ProductName    string  `json:"productName"`
 	ProductID      string  `json:"productId"`
+	Description    string  `json:"description"`
 	RateType       string  `json:"rateType"`
 	Rate           float64 `json:"rate"`
 	ComparisonRate float64 `json:"comparisonRate"`
@@ -49,6 +50,7 @@ type PaginatedLinks struct {
 type BankingProductV6 struct {
 	ProductID       string `json:"productId"`
 	Name            string `json:"name"`
+	Description     string `json:"description"`
 	Brand           string `json:"brand"`
 	BrandName       string `json:"brandName"`
 	IsTailored      bool   `json:"isTailored"`
@@ -79,6 +81,7 @@ type BankingProductLendingRateV3 struct {
 	LoanPurpose     string                     `json:"loanPurpose"`
 	Tiers           []BankingProductRateTierV4 `json:"tiers"`
 	AdditionalValue string                     `json:"additionalValue"`
+	AdditionalInfo  string                     `json:"additionalInfo"`
 }
 
 type BankingProductRateTierV4 struct {

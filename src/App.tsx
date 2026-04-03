@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from "react";
 import type { Database } from "sql.js";
-import type { MetaFile } from "./types";
+import type { MetaFile, FilterState } from "./types";
 import { initDB, queryRates, queryDashboardStats, queryRateDistribution, queryBestRatesByBank } from "./db";
 import { useUrlFilters } from "./hooks/useUrlState";
 import Header from "./components/Header";
@@ -36,7 +36,7 @@ export default function App() {
   const rates = useMemo(() => (db ? queryRates(db, filters) : []), [db, filters]);
   const totalRates = useMemo(() => (db ? queryRates(db, { ...filters, search: "", rateType: "", loanPurpose: "", repaymentType: "", maxLvr: 0 }).length : 0), [db, filters]);
 
-  const handleSort = useCallback((key: "rate" | "comparison_rate") => {
+  const handleSort = useCallback((key: FilterState["sortKey"]) => {
     setFilters({
       ...filters,
       sortKey: key,

@@ -4,7 +4,7 @@ export interface FilterState {
   repaymentType: string;
   maxLvr: number;
   search: string;
-  sortKey: "rate" | "comparison_rate";
+  sortKey: "rate" | "comparison_rate" | "bank_name" | "product_name" | "rate_type" | "repayment_type" | "loan_purpose" | "lvr_max";
   sortAsc: boolean;
 }
 

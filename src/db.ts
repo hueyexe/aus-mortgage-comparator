@@ -66,12 +66,22 @@ export function queryRates(db: Database, filters: FilterState): RateRow[] {
   }
 
   if (filters.search) {
-    conditions.push("(bank_name LIKE ? OR product_name LIKE ?)");
+    conditions.push("(bank_name LIKE ? OR product_name LIKE ? OR rate_type LIKE ? OR repayment_type LIKE ? OR loan_purpose LIKE ?)");
     const q = `%${filters.search}%`;
-    params.push(q, q);
+    params.push(q, q, q, q, q);
   }
 
-  const orderCol = filters.sortKey === "comparison_rate" ? "comparison_rate" : "rate";
+  const sortColMap: Record<FilterState["sortKey"], string> = {
+    rate: "rate",
+    comparison_rate: "comparison_rate",
+    bank_name: "bank_name",
+    product_name: "product_name",
+    rate_type: "rate_type",
+    repayment_type: "repayment_type",
+    loan_purpose: "loan_purpose",
+    lvr_max: "lvr_max",
+  };
+  const orderCol = sortColMap[filters.sortKey] ?? "rate";
   const orderDir = filters.sortAsc ? "ASC" : "DESC";
 
   const sql = `SELECT * FROM rates WHERE ${conditions.join(" AND ")} ORDER BY ${orderCol} ${orderDir}`;

@@ -92,9 +92,9 @@ export default function Filters({ filters, onChange, total, filtered }: FiltersP
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search banks or products..."
+            placeholder="Search banks, products, or rate details..."
             className="w-full pl-10 pr-8 py-2 rounded-xl bg-gray-100 dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-2 focus:outline-indigo-500 transition-colors"
-            aria-label="Search banks or products"
+            aria-label="Search banks, products, or rate details"
           />
           {search && (
             <button

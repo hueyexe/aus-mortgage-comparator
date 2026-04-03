@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"mime"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 var validRateTypes = map[string]bool{
@@ -70,6 +72,7 @@ func fetchBankRates(ctx context.Context, client *http.Client, brand BankBrand) (
 				BrandGroup:     p.Brand,
 				ProductName:    p.Name,
 				ProductID:      p.ProductID,
+				Description:    p.Description,
 				RateType:       lr.LendingRateType,
 				Rate:           rate,
 				ComparisonRate: compRate,
@@ -106,7 +109,20 @@ func fetchProducts(ctx context.Context, client *http.Client, baseURL string) ([]
 		}
 		if resp.StatusCode != http.StatusOK {
 			_ = resp.Body.Close()
+			if resp.StatusCode == http.StatusNotFound {
+				return nil, fmt.Errorf("products endpoint not found (404) for %s — API may be deprecated or unavailable", baseURL)
+			}
+			if resp.StatusCode == http.StatusNotAcceptable {
+				return nil, fmt.Errorf("products API version not supported (406) for %s", baseURL)
+			}
 			return nil, fmt.Errorf("products API returned %d for %s", resp.StatusCode, baseURL)
+		}
+
+		contentType := resp.Header.Get("Content-Type")
+		mediaType, _, err := mime.ParseMediaType(contentType)
+		if err != nil || !strings.HasPrefix(mediaType, "application/json") && !strings.HasPrefix(mediaType, "text/json") {
+			_ = resp.Body.Close()
+			return nil, fmt.Errorf("expected JSON response, got %q for %s", contentType, baseURL)
 		}
 
 		var result ProductsResponse
@@ -136,26 +152,41 @@ func doProductsRequest(ctx context.Context, client *http.Client, url, version st
 
 func fetchProductDetail(ctx context.Context, client *http.Client, baseURL, productID string) (*BankingProductDetailV7, error) {
 	url := fmt.Sprintf("%s/cds-au/v1/banking/products/%s", baseURL, productID)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("x-v", "6")
-	req.Header.Set("x-min-v", "4")
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
+	for _, version := range []string{"6", "5", "4"} {
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("x-v", version)
+		req.Header.Set("x-min-v", "4")
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("product detail API returned %d", resp.StatusCode)
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == http.StatusNotAcceptable || resp.StatusCode == http.StatusNotFound {
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("product detail API returned %d for product %s", resp.StatusCode, productID)
+		}
+
+		contentType := resp.Header.Get("Content-Type")
+		mediaType, _, err := mime.ParseMediaType(contentType)
+		if err != nil || !strings.HasPrefix(mediaType, "application/json") && !strings.HasPrefix(mediaType, "text/json") {
+			return nil, fmt.Errorf("expected JSON response, got %q for product %s", contentType, productID)
+		}
+
+		var result ProductDetailResponse
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return nil, err
+		}
+		return &result.Data.BankingProductDetailV7, nil
 	}
 
-	var result ProductDetailResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
-	}
-	return &result.Data.BankingProductDetailV7, nil
+	return nil, fmt.Errorf("product detail API failed for product %s after trying versions 6, 5, 4", productID)
 }
