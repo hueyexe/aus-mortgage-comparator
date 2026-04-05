@@ -1,69 +1,62 @@
-import { useState, useMemo, useCallback } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import type { Database } from "sql.js";
-import type { FilterState, BankSummary, BankProduct } from "../types";
-import { queryBanks, queryBankProducts } from "../db";
+import type { BankSortKey, BankSummary } from "../types";
+import { queryBanks, sortBanks } from "../db";
 
 interface BanksViewProps {
   db: Database;
-  onBankSelect?: (bankName: string) => void;
 }
+
+const SORT_OPTIONS: Array<{ value: BankSortKey; label: string }> = [
+  { value: "best_variable_rate", label: "Best variable" },
+  { value: "best_fixed_rate", label: "Best fixed" },
+  { value: "product_count", label: "Products" },
+  { value: "bank_name", label: "Bank name" },
+];
 
 function formatRate(v: number | null): string {
   if (v == null) return "—";
   return `${(v * 100).toFixed(2)}%`;
 }
 
-export default function BanksView({ db, onBankSelect }: BanksViewProps) {
-  const [expandedBank, setExpandedBank] = useState<string | null>(null);
+export default function BanksView({ db }: BanksViewProps) {
   const [search, setSearch] = useState("");
-  const [rateFilter, setRateFilter] = useState<"all" | "variable" | "fixed">("all");
+  const [sortKey, setSortKey] = useState<BankSortKey>("best_variable_rate");
+  const [sortAsc, setSortAsc] = useState(true);
 
-  const banks = useMemo(() => queryBanks(db), [db]);
+  useEffect(() => {
+    document.title = "Australian Mortgage Rate Comparator";
+  }, []);
 
-  const filteredBanks = useMemo(() => {
-    let result = banks;
-    if (search) {
-      const q = search.toLowerCase();
-      result = result.filter(
-        (b) =>
-          b.bank_name.toLowerCase().includes(q) ||
-          b.brand_group.toLowerCase().includes(q),
-      );
+  const banks = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const filtered = queryBanks(db).filter((bank) => {
+      if (!q) return true;
+      return bank.bank_name.toLowerCase().includes(q) || bank.brand_group.toLowerCase().includes(q);
+    });
+    return sortBanks(filtered, sortKey, sortAsc);
+  }, [db, search, sortKey, sortAsc]);
+
+  const cycleSort = (key: BankSortKey) => {
+    if (key === sortKey) {
+      setSortAsc((v) => !v);
+      return;
     }
-    if (rateFilter === "variable") {
-      result = result.filter((b) => b.best_variable_rate != null);
-    } else if (rateFilter === "fixed") {
-      result = result.filter((b) => b.best_fixed_rate != null);
-    }
-    return result;
-  }, [banks, search, rateFilter]);
+    setSortKey(key);
+    setSortAsc(true);
+  };
 
-  const toggleBank = useCallback(
-    (bankName: string) => {
-      setExpandedBank((prev) => {
-        const next = prev === bankName ? null : bankName;
-        onBankSelect?.(next ?? "");
-        return next;
-      });
-    },
-    [onBankSelect],
-  );
+  const sortIndicator = (key: BankSortKey) => {
+    if (sortKey !== key) return "";
+    return sortAsc ? " ↑" : " ↓";
+  };
 
   return (
-    <div>
-      {/* Search and filters */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-6">
-        <div className="relative flex-1">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
-          >
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="relative w-full md:max-w-md">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400">
             <circle cx="11" cy="11" r="8" />
             <line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
@@ -71,57 +64,63 @@ export default function BanksView({ db, onBankSelect }: BanksViewProps) {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search banks…"
-            className="w-full pl-9 pr-4 py-2 text-sm bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent placeholder:text-gray-400"
+            placeholder="Search banks or brands"
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            aria-label="Search banks or brands"
           />
         </div>
-        <div className="flex gap-1 bg-gray-100 dark:bg-gray-900 rounded-lg p-1">
-          {(["all", "variable", "fixed"] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setRateFilter(f)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                rateFilter === f
-                  ? "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-sm"
-                  : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
-              }`}
-            >
-              {f === "all" ? "All" : f === "variable" ? "Variable" : "Fixed"}
-            </button>
-          ))}
+
+        <div className="md:hidden flex gap-2">
+          <label className="sr-only" htmlFor="bank-sort">Sort banks</label>
+          <select
+            id="bank-sort"
+            value={sortKey}
+            onChange={(e) => setSortKey(e.target.value as BankSortKey)}
+            className="min-w-0 flex-1 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100"
+          >
+            {SORT_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => setSortAsc((v) => !v)}
+            className="shrink-0 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100"
+            aria-label={sortAsc ? "Sort descending" : "Sort ascending"}
+          >
+            {sortAsc ? "↑" : "↓"}
+          </button>
         </div>
       </div>
 
-      {/* Bank list */}
-      <div className="border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden">
-        {/* Header row */}
+      <div className="border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden bg-white dark:bg-gray-950">
         <div className="hidden md:grid grid-cols-12 gap-4 px-4 py-2 bg-gray-50 dark:bg-gray-900 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-800">
-          <div className="col-span-4">Bank</div>
-          <div className="col-span-2 text-right">Best Variable</div>
-          <div className="col-span-2 text-right">Best Fixed</div>
-          <div className="col-span-2 text-right">Products</div>
-          <div className="col-span-2 text-right">Best Product</div>
+          <button type="button" className="col-span-5 text-left hover:text-gray-900 dark:hover:text-gray-100" onClick={() => cycleSort("bank_name")}>
+            Bank{sortIndicator("bank_name")}
+          </button>
+          <button type="button" className="col-span-2 text-right hover:text-gray-900 dark:hover:text-gray-100" onClick={() => cycleSort("best_variable_rate")}>
+            Best Variable{sortIndicator("best_variable_rate")}
+          </button>
+          <button type="button" className="col-span-2 text-right hover:text-gray-900 dark:hover:text-gray-100" onClick={() => cycleSort("best_fixed_rate")}>
+            Best Fixed{sortIndicator("best_fixed_rate")}
+          </button>
+          <button type="button" className="col-span-2 text-right hover:text-gray-900 dark:hover:text-gray-100" onClick={() => cycleSort("product_count")}>
+            Products{sortIndicator("product_count")}
+          </button>
+          <div className="col-span-1"></div>
         </div>
 
-        {filteredBanks.length === 0 && (
+        {banks.length === 0 ? (
           <div className="px-4 py-12 text-center text-sm text-gray-500 dark:text-gray-400">
-            No banks match your search.
+            No banks found.
           </div>
+        ) : (
+          banks.map((bank) => <BankRow key={bank.bank_name} bank={bank} />)
         )}
-
-        {filteredBanks.map((bank) => (
-          <BankRow
-            key={bank.bank_name}
-            bank={bank}
-            isExpanded={expandedBank === bank.bank_name}
-            onToggle={() => toggleBank(bank.bank_name)}
-            db={db}
-          />
-        ))}
       </div>
 
-      <div className="mt-3 text-xs text-gray-400 dark:text-gray-500">
-        {filteredBanks.length} banks · Click a bank to see all products
+      <div className="text-xs text-gray-400 dark:text-gray-500">
+        {banks.length} banks shown. Search matches bank names and brand groups.
       </div>
     </div>
   );
@@ -129,174 +128,76 @@ export default function BanksView({ db, onBankSelect }: BanksViewProps) {
 
 interface BankRowProps {
   bank: BankSummary;
-  isExpanded: boolean;
-  onToggle: () => void;
-  db: Database;
 }
 
-function BankRow({ bank, isExpanded, onToggle, db }: BankRowProps) {
-  const products = useMemo(
-    () => (isExpanded ? queryBankProducts(db, bank.bank_name) : []),
-    [db, bank.bank_name, isExpanded],
-  );
-
-  const groupedProducts = useMemo(() => {
-    const groups: Record<string, BankProduct[]> = {};
-    for (const p of products) {
-      if (!groups[p.product_name]) groups[p.product_name] = [];
-      groups[p.product_name].push(p);
-    }
-    return groups;
-  }, [products]);
-
+function BankRow({ bank }: BankRowProps) {
   return (
-    <div className="border-b border-gray-100 dark:border-gray-800 last:border-b-0">
-      <button
-        onClick={onToggle}
-        className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors focus:outline-none focus:bg-gray-50 dark:focus:bg-gray-900/50"
-        aria-expanded={isExpanded}
-      >
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-4 items-center">
-          <div className="md:col-span-4">
-            <div className="flex items-center gap-2">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${isExpanded ? "rotate-90" : ""}`}
-              >
+    <Link
+      to={`/bank/${encodeURIComponent(bank.bank_name)}`}
+      className="block px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors border-b border-gray-100 dark:border-gray-800 last:border-b-0 focus:outline-none focus:bg-gray-50 dark:focus:bg-gray-900/50"
+    >
+      <div className="md:hidden space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-gray-400 shrink-0">
                 <polyline points="9 18 15 12 9 6" />
               </svg>
-              <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">
+              <span className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">
                 {bank.bank_name}
               </span>
             </div>
+            {bank.best_product_name && (
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 truncate">
+                {bank.best_product_name}
+              </p>
+            )}
           </div>
-          <div className="md:col-span-2 md:text-right">
-            <span className="font-mono text-sm font-medium text-gray-900 dark:text-gray-100">
-              {formatRate(bank.best_variable_rate)}
-            </span>
-          </div>
-          <div className="md:col-span-2 md:text-right">
-            <span className="font-mono text-sm font-medium text-gray-900 dark:text-gray-100">
-              {formatRate(bank.best_fixed_rate)}
-            </span>
-          </div>
-          <div className="md:col-span-2 md:text-right">
-            <span className="text-sm text-gray-500 dark:text-gray-400">
-              {bank.product_count}
-            </span>
-          </div>
-          <div className="md:col-span-2 md:text-right">
-            <span className="text-xs text-gray-400 dark:text-gray-500 truncate block">
-              {bank.best_product_name}
-            </span>
-          </div>
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-gray-300 dark:text-gray-600 shrink-0 mt-0.5">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
         </div>
-      </button>
 
-      {/* Expanded products */}
-      {isExpanded && (
-        <div className="bg-gray-50/50 dark:bg-gray-900/30 border-t border-gray-100 dark:border-gray-800">
-          {Object.entries(groupedProducts).map(([productName, productGroup]) => (
-            <div
-              key={productName}
-              className="border-b border-gray-100 dark:border-gray-800 last:border-b-0"
-            >
-              <div className="px-4 py-2 md:px-12">
-                <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                  {productName}
-                </div>
-                {productGroup[0].description && (
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                    {productGroup[0].description}
-                  </div>
-                )}
-              </div>
-              {/* Product rate variants */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="text-gray-400 dark:text-gray-500 border-b border-gray-100 dark:border-gray-800">
-                      <th className="text-left px-4 md:px-12 py-1.5 font-medium">Type</th>
-                      <th className="text-right px-4 py-1.5 font-medium">Rate</th>
-                      <th className="text-right px-4 py-1.5 font-medium">Comparison</th>
-                      <th className="text-right px-4 py-1.5 font-medium hidden sm:table-cell">Repayment</th>
-                      <th className="text-right px-4 py-1.5 font-medium hidden sm:table-cell">Purpose</th>
-                      <th className="text-right px-4 py-1.5 font-medium hidden md:table-cell">LVR</th>
-                      {productGroup.some((p) => p.fixed_term) && (
-                        <th className="text-right px-4 py-1.5 font-medium hidden md:table-cell">Term</th>
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {productGroup.map((p, i) => (
-                      <tr
-                        key={i}
-                        className="border-b border-gray-50 dark:border-gray-800/50 last:border-b-0 hover:bg-white dark:hover:bg-gray-900/50"
-                      >
-                        <td className="px-4 md:px-12 py-1.5">
-                          <span
-                            className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide ${
-                              p.rate_type === "VARIABLE" ||
-                              p.rate_type === "BUNDLE_DISCOUNT_VARIABLE" ||
-                              p.rate_type === "INTRODUCTORY"
-                                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                                : "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
-                            }`}
-                          >
-                            {p.rate_type === "BUNDLE_DISCOUNT_VARIABLE"
-                              ? "Bundle Var"
-                              : p.rate_type === "BUNDLE_DISCOUNT_FIXED"
-                                ? "Bundle Fix"
-                                : p.rate_type === "INTRODUCTORY"
-                                  ? "Intro"
-                                  : p.rate_type === "VARIABLE"
-                                    ? "Variable"
-                                    : "Fixed"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-1.5 text-right font-mono font-semibold text-gray-900 dark:text-gray-100">
-                          {(p.rate * 100).toFixed(2)}%
-                        </td>
-                        <td className="px-4 py-1.5 text-right font-mono text-gray-500 dark:text-gray-400">
-                          {(p.comparison_rate * 100).toFixed(2)}%
-                        </td>
-                        <td className="px-4 py-1.5 text-right text-gray-500 dark:text-gray-400 hidden sm:table-cell">
-                          {p.repayment_type === "PRINCIPAL_AND_INTEREST"
-                            ? "P&I"
-                            : p.repayment_type === "INTEREST_ONLY"
-                              ? "IO"
-                              : p.repayment_type}
-                        </td>
-                        <td className="px-4 py-1.5 text-right text-gray-500 dark:text-gray-400 hidden sm:table-cell">
-                          {p.loan_purpose === "OWNER_OCCUPIED"
-                            ? "Owner"
-                            : p.loan_purpose === "INVESTMENT"
-                              ? "Invest"
-                              : p.loan_purpose}
-                        </td>
-                        <td className="px-4 py-1.5 text-right text-gray-500 dark:text-gray-400 hidden md:table-cell">
-                          {p.lvr_max > 0 ? `${(p.lvr_max * 100).toFixed(0)}%` : "—"}
-                        </td>
-                        {productGroup.some((pp) => pp.fixed_term) && (
-                          <td className="px-4 py-1.5 text-right text-gray-500 dark:text-gray-400 hidden md:table-cell">
-                            {p.fixed_term || "—"}
-                          </td>
-                        )}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ))}
+        <div className="grid grid-cols-3 gap-2">
+          <div className="rounded-lg bg-gray-50 dark:bg-gray-900/60 px-2 py-2 text-center">
+            <div className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500">Variable</div>
+            <div className="mt-1 font-mono text-sm font-semibold text-gray-900 dark:text-gray-100">{formatRate(bank.best_variable_rate)}</div>
+          </div>
+          <div className="rounded-lg bg-gray-50 dark:bg-gray-900/60 px-2 py-2 text-center">
+            <div className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500">Fixed</div>
+            <div className="mt-1 font-mono text-sm font-semibold text-gray-900 dark:text-gray-100">{formatRate(bank.best_fixed_rate)}</div>
+          </div>
+          <div className="rounded-lg bg-gray-50 dark:bg-gray-900/60 px-2 py-2 text-center">
+            <div className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500">Products</div>
+            <div className="mt-1 font-mono text-sm font-semibold text-gray-900 dark:text-gray-100">{bank.product_count}</div>
+          </div>
         </div>
-      )}
-    </div>
+      </div>
+
+      <div className="hidden md:grid grid-cols-12 gap-4 items-center">
+        <div className="col-span-5">
+          <div className="flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-gray-400">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+            <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">{bank.bank_name}</span>
+          </div>
+        </div>
+        <div className="col-span-2 text-right">
+          <span className="font-mono text-sm font-medium text-gray-900 dark:text-gray-100">{formatRate(bank.best_variable_rate)}</span>
+        </div>
+        <div className="col-span-2 text-right">
+          <span className="font-mono text-sm font-medium text-gray-900 dark:text-gray-100">{formatRate(bank.best_fixed_rate)}</span>
+        </div>
+        <div className="col-span-2 text-right">
+          <span className="text-sm text-gray-500 dark:text-gray-400">{bank.product_count}</span>
+        </div>
+        <div className="col-span-1 text-right">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-gray-300 dark:text-gray-600 inline">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </div>
+      </div>
+    </Link>
   );
 }

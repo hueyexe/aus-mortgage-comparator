@@ -4,6 +4,7 @@ import type {
   FilterState,
   RateRow,
   BankSummary,
+  BankSortKey,
   BankProduct,
   RateTrendPoint,
   RateHistoryPoint,
@@ -215,13 +216,13 @@ export function queryBanks(db: Database): BankSummary[] {
       COUNT(DISTINCT product_id) as product_count,
       MIN(CASE WHEN rate_type IN (${VARIABLE_TYPES}) THEN rate END) as best_var,
       MIN(CASE WHEN rate_type IN (${FIXED_TYPES}) THEN rate END) as best_fixed,
-      (SELECT product_name FROM rates r2 WHERE r2.snapshot_id = rates.snapshot_id AND r2.bank_name = rates.bank_name AND r2.rate = MIN(rates.rate) AND r2.rate > 0.03 LIMIT 1) as best_product
+      (SELECT product_name FROM rates r2 WHERE r2.snapshot_id = ? AND r2.bank_name = rates.bank_name AND r2.rate = (SELECT MIN(r3.rate) FROM rates r3 WHERE r3.snapshot_id = ? AND r3.bank_name = rates.bank_name AND r3.rate > 0.03) AND r2.rate > 0.03 LIMIT 1) as best_product
     FROM rates
     WHERE snapshot_id = ? AND rate > 0.03
     GROUP BY bank_name
     ORDER BY best_var ASC
   `,
-    [sid],
+    [sid, sid, sid],
   );
 
   if (!result.length) return [];
@@ -233,6 +234,32 @@ export function queryBanks(db: Database): BankSummary[] {
     best_fixed_rate: (row[4] as number) ?? null,
     best_product_name: (row[5] as string) || "",
   }));
+}
+
+export function sortBanks(banks: BankSummary[], sortKey: BankSortKey, sortAsc: boolean): BankSummary[] {
+  const value = (bank: BankSummary) => {
+    switch (sortKey) {
+      case "best_variable_rate":
+        return bank.best_variable_rate ?? Number.POSITIVE_INFINITY;
+      case "best_fixed_rate":
+        return bank.best_fixed_rate ?? Number.POSITIVE_INFINITY;
+      case "product_count":
+        return bank.product_count;
+      case "bank_name":
+        return bank.bank_name.toLowerCase();
+    }
+  };
+
+  return [...banks].sort((a, b) => {
+    const av = value(a);
+    const bv = value(b);
+    if (typeof av === "string" && typeof bv === "string") {
+      return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+    }
+    if (av < bv) return sortAsc ? -1 : 1;
+    if (av > bv) return sortAsc ? 1 : -1;
+    return a.bank_name.localeCompare(b.bank_name);
+  });
 }
 
 export function queryBankProducts(db: Database, bankName: string, filters?: FilterState): BankProduct[] {
@@ -267,8 +294,28 @@ export function queryBankProducts(db: Database, bankName: string, filters?: Filt
     }
   }
 
-  const sql = `SELECT product_name, product_id, description, rate_type, rate, comparison_rate, repayment_type, loan_purpose, lvr_min, lvr_max, fixed_term, last_updated FROM rates WHERE ${conditions.join(" AND ")} ORDER BY rate ASC`;
+  const sql = `SELECT bank_name, product_name, product_id, description, rate_type, rate, comparison_rate, repayment_type, loan_purpose, lvr_min, lvr_max, fixed_term, last_updated FROM rates WHERE ${conditions.join(" AND ")} ORDER BY rate ASC`;
   const res = db.exec(sql, params);
+  if (!res.length) return [];
+
+  const columns = res[0].columns;
+  return res[0].values.map((row) => {
+    const obj: Record<string, unknown> = {};
+    columns.forEach((col, i) => {
+      obj[col] = row[i];
+    });
+    return obj as unknown as BankProduct;
+  });
+}
+
+export function queryProductById(db: Database, productId: string): BankProduct[] {
+  const sid = latestSnapshotId(db);
+  if (sid === null) return [];
+
+  const res = db.exec(
+    `SELECT bank_name, product_name, product_id, description, rate_type, rate, comparison_rate, repayment_type, loan_purpose, lvr_min, lvr_max, fixed_term, last_updated FROM rates WHERE snapshot_id = ? AND product_id = ? ORDER BY rate ASC`,
+    [sid, productId],
+  );
   if (!res.length) return [];
 
   const columns = res[0].columns;

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from "react";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import type { Database } from "sql.js";
 import type { MetaFile, FilterState } from "./types";
 import { initDB, queryRates, queryDashboardStats, queryRateDistribution, queryBestRatesByBank } from "./db";
@@ -6,12 +7,46 @@ import { useUrlFilters } from "./hooks/useUrlState";
 import Header from "./components/Header";
 import Filters from "./components/Filters";
 import RateTable from "./components/RateTable";
+import BanksView from "./components/BanksView";
+import BankDetail from "./components/BankDetail";
+import ProductDetail from "./components/ProductDetail";
 import LoadingSkeleton from "./components/LoadingSkeleton";
 
 const Dashboard = lazy(() => import("./components/Dashboard"));
 const CompareDrawer = lazy(() => import("./components/CompareDrawer"));
 
+function RatesPage({
+  stats,
+  distribution,
+  bestRates,
+  filters,
+  setFilters,
+  totalRates,
+  rates,
+  handleSort,
+}: {
+  stats: ReturnType<typeof queryDashboardStats> | null;
+  distribution: ReturnType<typeof queryRateDistribution>;
+  bestRates: ReturnType<typeof queryBestRatesByBank>;
+  filters: FilterState;
+  setFilters: (f: FilterState) => void;
+  totalRates: number;
+  rates: ReturnType<typeof queryRates>;
+  handleSort: (key: FilterState["sortKey"]) => void;
+}) {
+  return (
+    <>
+      <Suspense fallback={<div className="grid grid-cols-2 md:grid-cols-4 gap-4">{Array.from({ length: 4 }, (_, i) => <div key={i} className="h-24 rounded-2xl bg-gray-200 dark:bg-gray-800 animate-pulse" />)}</div>}>
+        <Dashboard stats={stats} distribution={distribution} bestRates={bestRates} />
+      </Suspense>
+      <Filters filters={filters} onChange={setFilters} total={totalRates} filtered={rates.length} />
+      <RateTable rates={rates} filters={filters} onSort={handleSort} />
+    </>
+  );
+}
+
 export default function App() {
+  const location = useLocation();
   const [db, setDb] = useState<Database | null>(null);
   const [meta, setMeta] = useState<MetaFile | null>(null);
   const [error, setError] = useState("");
@@ -68,15 +103,17 @@ export default function App() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
       <Header meta={meta} />
       <main className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
-        <Suspense fallback={<div className="grid grid-cols-2 md:grid-cols-4 gap-4">{Array.from({ length: 4 }, (_, i) => <div key={i} className="h-24 rounded-2xl bg-gray-200 dark:bg-gray-800 animate-pulse" />)}</div>}>
-          <Dashboard stats={stats} distribution={distribution} bestRates={bestRates} />
-        </Suspense>
-        <Filters filters={filters} onChange={setFilters} total={totalRates} filtered={rates.length} />
-        <RateTable rates={rates} filters={filters} onSort={handleSort} />
+        <Routes>
+          <Route path="/" element={<Navigate to="/banks" replace />} />
+          <Route path="/banks" element={<BanksView db={db} />} />
+          <Route path="/bank/:bankName" element={<BankDetail db={db} />} />
+          <Route path="/product/:productId" element={<ProductDetail db={db} />} />
+          <Route path="/rates" element={<RatesPage stats={stats} distribution={distribution} bestRates={bestRates} filters={filters} setFilters={setFilters} totalRates={totalRates} rates={rates} handleSort={handleSort} />} />
+          <Route path="*" element={<Navigate to="/banks" replace />} />
+        </Routes>
       </main>
 
-      {/* Compare FAB */}
-      {db && (
+      {location.pathname === "/rates" && (
         <button
           onClick={() => setDrawerOpen(true)}
           className="fixed bottom-6 right-6 px-4 py-3 rounded-full bg-indigo-600 hover:bg-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-400 text-white font-medium text-sm shadow-lg hover:shadow-xl transition-all duration-200 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 z-30"
@@ -93,11 +130,9 @@ export default function App() {
         </button>
       )}
 
-      {db && (
-        <Suspense fallback={null}>
-          <CompareDrawer db={db} isOpen={drawerOpen} onClose={() => setDrawerOpen(false)} />
-        </Suspense>
-      )}
+      <Suspense fallback={null}>
+        <CompareDrawer db={db} isOpen={drawerOpen} onClose={() => setDrawerOpen(false)} />
+      </Suspense>
     </div>
   );
 }

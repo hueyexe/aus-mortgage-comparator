@@ -35,7 +35,10 @@ export interface BankSummary {
   best_product_name: string;
 }
 
+export type BankSortKey = "best_variable_rate" | "best_fixed_rate" | "product_count" | "bank_name";
+
 export interface BankProduct {
+  bank_name: string;
   product_name: string;
   product_id: string;
   description: string;

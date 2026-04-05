@@ -36,21 +36,19 @@ export default function CompareDrawer({ db, isOpen, onClose }: CompareDrawerProp
     );
   };
 
+  if (!isOpen) return null;
+
   return (
     <>
       {/* Overlay */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 bg-black/30 dark:bg-black/50 z-40 transition-opacity"
-          onClick={onClose}
-        />
-      )}
+      <div
+        className="fixed inset-0 bg-black/30 dark:bg-black/50 z-40 transition-opacity"
+        onClick={onClose}
+      />
 
       {/* Drawer */}
       <div
-        className={`fixed top-0 right-0 h-full w-full max-w-lg bg-white dark:bg-gray-950 z-50 shadow-2xl transition-transform duration-300 ${
-          isOpen ? "translate-x-0" : "translate-x-full"
-        }`}
+        className="fixed top-0 right-0 h-full w-full max-w-lg bg-white dark:bg-gray-950 z-50 shadow-2xl transition-transform duration-300 translate-x-0"
       >
         <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-800">
           <h2 className="text-lg font-bold">Compare Banks</h2>
