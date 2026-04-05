@@ -41,6 +41,23 @@ function latestSnapshotId(db: Database): number | null {
   return r[0].values[0][0] as number;
 }
 
+function hasDescriptionColumn(db: Database): boolean {
+  const result = db.exec("PRAGMA table_info(rates)");
+  return result.some((set) => set.values.some((row) => row[1] === "description"));
+}
+
+function rateSelectColumns(db: Database): string {
+  return hasDescriptionColumn(db)
+    ? "bank_name, product_name, product_id, description, rate_type, rate, comparison_rate, repayment_type, loan_purpose, lvr_min, lvr_max, fixed_term, last_updated"
+    : "bank_name, product_name, product_id, NULL AS description, rate_type, rate, comparison_rate, repayment_type, loan_purpose, lvr_min, lvr_max, fixed_term, last_updated";
+}
+
+function rateColumns(db: Database): string {
+  return hasDescriptionColumn(db)
+    ? rateSelectColumns(db)
+    : "bank_name, product_name, product_id, rate_type, rate, comparison_rate, repayment_type, loan_purpose, lvr_min, lvr_max, fixed_term, last_updated";
+}
+
 export function queryRates(db: Database, filters: FilterState): RateRow[] {
   const sid = latestSnapshotId(db);
   if (sid === null) return [];
@@ -294,7 +311,7 @@ export function queryBankProducts(db: Database, bankName: string, filters?: Filt
     }
   }
 
-  const sql = `SELECT bank_name, product_name, product_id, description, rate_type, rate, comparison_rate, repayment_type, loan_purpose, lvr_min, lvr_max, fixed_term, last_updated FROM rates WHERE ${conditions.join(" AND ")} ORDER BY rate ASC`;
+  const sql = `SELECT ${rateColumns(db)} FROM rates WHERE ${conditions.join(" AND ")} ORDER BY rate ASC`;
   const res = db.exec(sql, params);
   if (!res.length) return [];
 
@@ -313,7 +330,7 @@ export function queryProductById(db: Database, productId: string): BankProduct[]
   if (sid === null) return [];
 
   const res = db.exec(
-    `SELECT bank_name, product_name, product_id, description, rate_type, rate, comparison_rate, repayment_type, loan_purpose, lvr_min, lvr_max, fixed_term, last_updated FROM rates WHERE snapshot_id = ? AND product_id = ? ORDER BY rate ASC`,
+    `SELECT ${rateColumns(db)} FROM rates WHERE snapshot_id = ? AND product_id = ? ORDER BY rate ASC`,
     [sid, productId],
   );
   if (!res.length) return [];
@@ -352,7 +369,7 @@ export function queryTopPicks(db: Database): BankProduct[] {
 
   const result = db.exec(
     `
-    SELECT bank_name, product_name, product_id, description, rate_type, rate, comparison_rate, repayment_type, loan_purpose, lvr_min, lvr_max, fixed_term, last_updated
+    SELECT ${rateColumns(db)}
     FROM rates
     WHERE snapshot_id = ?
       AND rate_type IN (${VARIABLE_TYPES})

@@ -62,7 +62,55 @@ func openDB(ctx context.Context, path string) (*sql.DB, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("creating schema: %w", err)
 	}
+	if err := migrateRatesSchema(ctx, db); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	return db, nil
+}
+
+func migrateRatesSchema(ctx context.Context, db *sql.DB) error {
+	hasDescription, err := columnExists(ctx, db, "rates", "description")
+	if err != nil {
+		return fmt.Errorf("checking rates schema: %w", err)
+	}
+	if hasDescription {
+		return nil
+	}
+
+	if _, err := db.ExecContext(ctx, `ALTER TABLE rates ADD COLUMN description TEXT NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("adding description column: %w", err)
+	}
+	return nil
+}
+
+func columnExists(ctx context.Context, db *sql.DB, table, column string) (bool, error) {
+	rows, err := db.QueryContext(ctx, fmt.Sprintf(`PRAGMA table_info(%s)`, table))
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			cid        int
+			name       string
+			typeName   string
+			notNull    int
+			defaultVal sql.NullString
+			pk         int
+		)
+		if err := rows.Scan(&cid, &name, &typeName, &notNull, &defaultVal, &pk); err != nil {
+			return false, err
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+	return false, nil
 }
 
 func writeSnapshot(ctx context.Context, db *sql.DB, rates []MortgageRate, bankCount, errCount int) error {
