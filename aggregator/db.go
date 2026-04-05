@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS rates (
   brand_group TEXT NOT NULL DEFAULT '',
   product_name TEXT NOT NULL,
   product_id TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
   rate_type TEXT NOT NULL,
   rate REAL NOT NULL,
   comparison_rate REAL NOT NULL DEFAULT 0,
@@ -80,7 +81,7 @@ func writeSnapshot(ctx context.Context, db *sql.DB, rates []MortgageRate, bankCo
 		return fmt.Errorf("inserting snapshot: %w", err)
 	}
 
-	stmt, err := tx.PrepareContext(ctx, `INSERT INTO rates (snapshot_id, bank_name, brand_group, product_name, product_id, rate_type, rate, comparison_rate, repayment_type, loan_purpose, lvr_min, lvr_max, fixed_term, is_tailored, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	stmt, err := tx.PrepareContext(ctx, `INSERT INTO rates (snapshot_id, bank_name, brand_group, product_name, product_id, description, rate_type, rate, comparison_rate, repayment_type, loan_purpose, lvr_min, lvr_max, fixed_term, is_tailored, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return fmt.Errorf("preparing statement: %w", err)
 	}
@@ -91,7 +92,7 @@ func writeSnapshot(ctx context.Context, db *sql.DB, rates []MortgageRate, bankCo
 		if r.IsTailored {
 			tailored = 1
 		}
-		if _, err := stmt.ExecContext(ctx, snapshotID, r.BankName, r.BrandGroup, r.ProductName, r.ProductID, r.RateType, r.Rate, r.ComparisonRate, r.RepaymentType, r.LoanPurpose, r.LvrMin, r.LvrMax, r.FixedTerm, tailored, r.LastUpdated); err != nil {
+		if _, err := stmt.ExecContext(ctx, snapshotID, r.BankName, r.BrandGroup, r.ProductName, r.ProductID, r.Description, r.RateType, r.Rate, r.ComparisonRate, r.RepaymentType, r.LoanPurpose, r.LvrMin, r.LvrMax, r.FixedTerm, tailored, r.LastUpdated); err != nil {
 			return fmt.Errorf("inserting rate: %w", err)
 		}
 	}

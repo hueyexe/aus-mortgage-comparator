@@ -3,6 +3,10 @@ import type { Database } from "sql.js";
 import type {
   FilterState,
   RateRow,
+  BankSummary,
+  BankSortKey,
+  BankProduct,
+  RateTrendPoint,
   RateHistoryPoint,
   DashboardStats,
   RateDistributionBucket,
@@ -198,4 +202,176 @@ export function queryBestRatesByBank(db: Database, limit: number = 15): BestRate
     rate: row[1] as number,
     product_name: row[2] as string,
   }));
+}
+
+export function queryBanks(db: Database): BankSummary[] {
+  const sid = latestSnapshotId(db);
+  if (sid === null) return [];
+
+  const result = db.exec(
+    `
+    SELECT
+      bank_name,
+      MAX(brand_group) as brand_group,
+      COUNT(DISTINCT product_id) as product_count,
+      MIN(CASE WHEN rate_type IN (${VARIABLE_TYPES}) THEN rate END) as best_var,
+      MIN(CASE WHEN rate_type IN (${FIXED_TYPES}) THEN rate END) as best_fixed,
+      (SELECT product_name FROM rates r2 WHERE r2.snapshot_id = ? AND r2.bank_name = rates.bank_name AND r2.rate = (SELECT MIN(r3.rate) FROM rates r3 WHERE r3.snapshot_id = ? AND r3.bank_name = rates.bank_name AND r3.rate > 0.03) AND r2.rate > 0.03 LIMIT 1) as best_product
+    FROM rates
+    WHERE snapshot_id = ? AND rate > 0.03
+    GROUP BY bank_name
+    ORDER BY best_var ASC
+  `,
+    [sid, sid, sid],
+  );
+
+  if (!result.length) return [];
+  return result[0].values.map((row) => ({
+    bank_name: row[0] as string,
+    brand_group: (row[1] as string) || "",
+    product_count: row[2] as number,
+    best_variable_rate: (row[3] as number) ?? null,
+    best_fixed_rate: (row[4] as number) ?? null,
+    best_product_name: (row[5] as string) || "",
+  }));
+}
+
+export function sortBanks(banks: BankSummary[], sortKey: BankSortKey, sortAsc: boolean): BankSummary[] {
+  const value = (bank: BankSummary) => {
+    switch (sortKey) {
+      case "best_variable_rate":
+        return bank.best_variable_rate ?? Number.POSITIVE_INFINITY;
+      case "best_fixed_rate":
+        return bank.best_fixed_rate ?? Number.POSITIVE_INFINITY;
+      case "product_count":
+        return bank.product_count;
+      case "bank_name":
+        return bank.bank_name.toLowerCase();
+    }
+  };
+
+  return [...banks].sort((a, b) => {
+    const av = value(a);
+    const bv = value(b);
+    if (typeof av === "string" && typeof bv === "string") {
+      return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+    }
+    if (av < bv) return sortAsc ? -1 : 1;
+    if (av > bv) return sortAsc ? 1 : -1;
+    return a.bank_name.localeCompare(b.bank_name);
+  });
+}
+
+export function queryBankProducts(db: Database, bankName: string, filters?: FilterState): BankProduct[] {
+  const sid = latestSnapshotId(db);
+  if (sid === null) return [];
+
+  const conditions: string[] = ["snapshot_id = ?", "bank_name = ?"];
+  const params: (string | number)[] = [sid, bankName];
+
+  if (filters) {
+    if (filters.rateType === "VARIABLE") {
+      conditions.push(`rate_type IN (${VARIABLE_TYPES})`);
+    } else if (filters.rateType === "FIXED") {
+      conditions.push(`rate_type IN (${FIXED_TYPES})`);
+    }
+    if (filters.loanPurpose) {
+      conditions.push("(loan_purpose = ? OR loan_purpose = 'UNCONSTRAINED')");
+      params.push(filters.loanPurpose);
+    }
+    if (filters.repaymentType) {
+      conditions.push("(repayment_type = ? OR repayment_type = 'UNCONSTRAINED')");
+      params.push(filters.repaymentType);
+    }
+    if (filters.maxLvr > 0) {
+      conditions.push("(lvr_max <= ? OR lvr_max = 0)");
+      params.push(filters.maxLvr);
+    }
+    if (filters.search) {
+      conditions.push("(product_name LIKE ? OR rate_type LIKE ? OR repayment_type LIKE ? OR loan_purpose LIKE ?)");
+      const q = `%${filters.search}%`;
+      params.push(q, q, q, q);
+    }
+  }
+
+  const sql = `SELECT bank_name, product_name, product_id, description, rate_type, rate, comparison_rate, repayment_type, loan_purpose, lvr_min, lvr_max, fixed_term, last_updated FROM rates WHERE ${conditions.join(" AND ")} ORDER BY rate ASC`;
+  const res = db.exec(sql, params);
+  if (!res.length) return [];
+
+  const columns = res[0].columns;
+  return res[0].values.map((row) => {
+    const obj: Record<string, unknown> = {};
+    columns.forEach((col, i) => {
+      obj[col] = row[i];
+    });
+    return obj as unknown as BankProduct;
+  });
+}
+
+export function queryProductById(db: Database, productId: string): BankProduct[] {
+  const sid = latestSnapshotId(db);
+  if (sid === null) return [];
+
+  const res = db.exec(
+    `SELECT bank_name, product_name, product_id, description, rate_type, rate, comparison_rate, repayment_type, loan_purpose, lvr_min, lvr_max, fixed_term, last_updated FROM rates WHERE snapshot_id = ? AND product_id = ? ORDER BY rate ASC`,
+    [sid, productId],
+  );
+  if (!res.length) return [];
+
+  const columns = res[0].columns;
+  return res[0].values.map((row) => {
+    const obj: Record<string, unknown> = {};
+    columns.forEach((col, i) => {
+      obj[col] = row[i];
+    });
+    return obj as unknown as BankProduct;
+  });
+}
+
+export function queryRateTrend(
+  db: Database,
+  productId: string,
+  rateType: string,
+  repaymentType: string,
+  loanPurpose: string,
+): { trend: "up" | "down" | "stable" | null; change: number | null; history: RateTrendPoint[] } {
+  const history = queryRateHistory(db, productId, rateType, repaymentType, loanPurpose);
+  if (history.length < 2) {
+    return { trend: null, change: null, history };
+  }
+  const first = history[0].rate;
+  const last = history[history.length - 1].rate;
+  const change = last - first;
+  const trend = change < 0 ? "down" : change > 0 ? "up" : "stable";
+  return { trend, change, history };
+}
+
+export function queryTopPicks(db: Database): BankProduct[] {
+  const sid = latestSnapshotId(db);
+  if (sid === null) return [];
+
+  const result = db.exec(
+    `
+    SELECT bank_name, product_name, product_id, description, rate_type, rate, comparison_rate, repayment_type, loan_purpose, lvr_min, lvr_max, fixed_term, last_updated
+    FROM rates
+    WHERE snapshot_id = ?
+      AND rate_type IN (${VARIABLE_TYPES})
+      AND (repayment_type = 'PRINCIPAL_AND_INTEREST' OR repayment_type = 'UNCONSTRAINED')
+      AND (loan_purpose = 'OWNER_OCCUPIED' OR loan_purpose = 'UNCONSTRAINED')
+      AND rate > 0.03
+    ORDER BY rate ASC
+    LIMIT 10
+  `,
+    [sid],
+  );
+
+  if (!result.length) return [];
+  const columns = result[0].columns;
+  return result[0].values.map((row) => {
+    const obj: Record<string, unknown> = {};
+    columns.forEach((col, i) => {
+      obj[col] = row[i];
+    });
+    return obj as unknown as BankProduct;
+  });
 }
